@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FTIR Spectrum Image Extractor</title>
+<meta name="description" content="Extract infrared spectrum curves from images. Upload a spectrum image, set wavenumber parameters, and automatically trace the curve. Download the extracted data as CSV for analysis. Free open-source tool for researchers.">
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+:root {
+    --ft-color-bg: #0a0e17;
+    --ft-color-surface: #111827;
+    --ft-color-surface-soft: #0d1320;
+    --ft-color-line: #1e2d3d;
+    --ft-color-line-strong: #2a3f55;
+    --ft-color-text: #e2e8f0;
+    --ft-color-text-soft: #8899aa;
+    --ft-color-cyan: #22d3ee;
+    --ft-color-cyan-strong: #0ea5e9;
+    --ft-color-danger: #ef4444;
+    --ft-radius-sm: 4px;
+    --ft-radius-md: 8px;
+    --ft-shadow-modal: 0 25px 50px rgba(0,0,0,0.5);
+    --ft-font-mono: 'Menlo', 'Consolas', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--ft-color-bg);
+    color: var(--ft-color-text);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+.ft-page-shell { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.ft-page-hero { text-align: center; margin-bottom: 24px; }
+.ft-page-hero__eyebrow { color: var(--ft-color-cyan); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.ft-page-title { color: var(--ft-color-text); font-size: 1.8em; font-weight: 600; margin-bottom: 8px; }
+.ft-page-intro { color: var(--ft-color-text-soft); font-size: 0.95em; max-width: 700px; margin: 0 auto; }
+.ft-notice { padding: 14px 16px; background: var(--ft-color-surface); border: 1px solid var(--ft-color-line); border-radius: var(--ft-radius-md); margin-bottom: 16px; color: var(--ft-color-text-soft); font-size: 0.9em; line-height: 1.7; }
+.ft-notice b { color: var(--ft-color-text); }
+.ft-tools-section { padding: 16px; border: 1px solid var(--ft-color-line); border-radius: var(--ft-radius-md); margin-bottom: 16px; background: var(--ft-color-surface); }
+.ft-button { min-height: 36px; padding: 8px 18px; border: 1px solid var(--ft-color-cyan); border-radius: var(--ft-radius-sm); background: var(--ft-color-cyan); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ft-button:hover { background: var(--ft-color-cyan-strong); border-color: var(--ft-color-cyan-strong); }
+.ft-auto-hint { display:flex; flex-direction:column; align-items:center; gap:3px; margin-bottom:5px; }
+.ft-auto-hint__arrow { color:#2b7f93; font-size:1.3em; line-height:1; animation:ft-hint-bounce .8s ease-in-out infinite; }
+.ft-auto-hint__text { font-size:.75em; color:#5bbecf; text-align:center; white-space:nowrap; }
+@keyframes ft-hint-bounce { 0%,100%{transform:translateY(0);opacity:1;} 50%{transform:translateY(5px);opacity:.65;} }
+@keyframes ft-spin { to { transform: rotate(360deg); } }
+.ft-advanced-stepbar {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    padding: 8px; border: 1px solid var(--ft-color-line); border-radius: var(--ft-radius-md);
+    background: var(--ft-color-surface); margin-bottom: 16px;
+}
+.ft-advanced-step {
+    display: flex; align-items: center; justify-content: center; padding: 8px;
+    border: 1px solid var(--ft-color-line); border-radius: var(--ft-radius-sm);
+    background: var(--ft-color-line); color: var(--ft-color-text-soft);
+    font-family: var(--ft-font-mono); font-size: 12px;
+}
+.ft-advanced-step.is-current { border-color: var(--ft-color-cyan); background: var(--ft-color-cyan); color: var(--ft-color-bg); }
+.ft-advanced-step.is-complete { border-color: var(--ft-color-cyan-strong); background: var(--ft-color-cyan-strong); color: var(--ft-color-text); }
+.ft-advanced-modal { display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center; background:rgba(7,10,17,0.86); }
+.ft-advanced-modal__panel { width:800px; max-width:90%; padding:20px; border:1px solid var(--ft-color-line); border-radius:var(--ft-radius-md); background:var(--ft-color-surface); box-shadow:var(--ft-shadow-modal); }
+.ft-advanced-modal__head { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+.ft-advanced-loading { display:none; position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; flex-direction:column; background:rgba(7,10,17,0.82); }
+.ft-advanced-loading__spinner { width:60px; height:60px; border:2px solid var(--ft-color-line); border-top-color:var(--ft-color-cyan); border-radius:50%; animation:ft-spin 1s linear infinite; }
+.ft-advanced-extract-stage { background:rgba(0,0,0,0.3); border-radius:10px; padding:15px; position:relative; min-height:400px; display:flex; justify-content:center; align-items:center; }
+.ft-advanced-extract-viewport { display:flex; justify-content:center; align-items:center; width:100%; overflow:auto; }
+.ft-advanced-extract-viewport.is-trace-zoom { justify-content:flex-start; }
+.ft-advanced-extract-viewport.is-trace-zoom canvas { max-width:none !important; max-height:none !important; }
+canvas { border: 1px solid var(--ft-color-line); background: var(--ft-color-surface-soft); }
+.ft-footer { text-align: center; padding: 30px 20px; margin-top: 40px; border-top: 1px solid var(--ft-color-line); color: var(--ft-color-text-soft); font-size: 0.85em; }
+.ft-footer a { color: var(--ft-color-cyan); text-decoration: none; }
+.ft-footer a:hover { text-decoration: underline; }
+@media (max-width: 900px) {
+    .ft-advanced-stepbar { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="ft-page-shell">
+
+<section class="ft-page-hero">
+    <div class="ft-page-hero__eyebrow">Image To CSV</div>
+    <h1 class="ft-page-title">FTIR Spectrum Curve Extraction</h1>
+    <p class="ft-page-intro">
+        Extract a usable FTIR curve from an image, verify the traced result visually, then export CSV for search and interpretation.
+    </p>
+</section>
+
+<nav class="ft-advanced-stepbar" aria-label="Spectrum extraction steps">
+    <span class="ft-advanced-step is-current">01 Upload</span>
+    <span class="ft-advanced-step">02 Crop &amp; Parameters</span>
+    <span class="ft-advanced-step">03 Background</span>
+    <span class="ft-advanced-step">04 Extract</span>
+</nav>
+
+<div class="ft-notice">
+    <b>Quick Tips</b>:
+    <br>Preferably use a clear, non-distorted spectral image (800px wide) without grid lines or peak labels.
+    <br>After processing, preview the extracted curve, verify major peaks with the mouse, then download the CSV file.
+    <br>Three extraction methods are available: automatic, color-based, and manual point-by-point tracing.
+</div>
+
+<!-- Step 1: Upload -->
+<div id="step-upload" class="ft-tools-section">
+    <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+        <div style="width:40px; height:40px; background:var(--ft-color-cyan); border-radius:4px; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">1</div>
+        <h2 style="margin:0; color:var(--ft-color-text);">Upload Spectrum Image</h2>
+    </div>
+    <p style="margin:0 0 12px 0; color:var(--ft-color-text-soft); font-size:.92em;">Upload a clear image with low compression noise and strong axis/curve contrast.</p>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <div style="display:flex; gap:15px; flex-wrap:wrap; align-items:flex-end;">
+            <div style="flex:1; min-width:200px;">
+                <label style="display:block; font-size:0.9em; color:var(--ft-color-text-soft); margin-bottom:5px;">Select Image File</label>
+                <input type="file" id="fileInput" name="image" accept="image/jpeg,image/png,image/jpg" required
+                       style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:#fff;">
+            </div>
+            <button type="submit" class="ft-button">Upload &amp; Continue</button>
+        </div>
+        <p style="color:var(--ft-color-text-soft); font-size:0.85em; margin-top:10px;">Supported formats: JPG, PNG. Max size: 10MB.</p>
+    </form>
+</div>
+
+<!-- Step 2: Crop & Parameters -->
+<div id="step-crop" class="ft-tools-section" style="display:none;">
+    <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+        <div style="width:40px; height:40px; background:#888; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;" id="step2-number">2</div>
+        <h2 style="margin:0; color:var(--ft-color-text-soft);" id="step2-title">Crop &amp; Set Parameters</h2>
+    </div>
+    <div style="margin:0 0 12px 0; padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.04); color:var(--ft-color-text-soft); font-size:.9em; line-height:1.65;">
+        <b>Step 2 Tips</b><br>
+        1) Adjust the crop box so its top touches the curve's peak and bottom touches the curve's trough.<br>
+        2) Align left/right edges with spectral start/end points or axis ticks, then enter the wavenumbers accurately.<br>
+        3) If the axis is non-linear, check "Use 2000 cm⁻¹ split" and drag the yellow dashed line to align with the 2000 wavenumber tick.
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 320px; gap:20px;">
+        <div>
+            <div style="background:rgba(0,0,0,0.3); border-radius:10px; padding:15px; position:relative; min-height:500px; display:flex; justify-content:center; align-items:center;">
+                <canvas id="mainCanvas" style="max-width:100%; max-height:600px; cursor:crosshair;"></canvas>
+            </div>
+            <div style="margin-top:15px; text-align:center;">
+                <button type="button" data-ft-action="resetCrop" style="padding:8px 20px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer; margin-right:10px;">Reset Crop</button>
+                <button type="button" data-ft-action="applyCrop" class="ft-button">Apply Crop</button>
+            </div>
+            <p style="color:var(--ft-color-text-soft); font-size:0.85em; text-align:center; margin-top:10px;">Drag inside box to move, drag corners to resize</p>
+        </div>
+        <div style="background:var(--ft-color-bg); border-radius:10px; padding:20px; border:1px solid var(--ft-color-line);">
+            <h3 style="color:var(--ft-color-text); margin-bottom:15px; border-bottom:1px solid var(--ft-color-line); padding-bottom:10px;">Spectrum Parameters</h3>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Left Wavenumber (cm⁻¹)</label>
+                <input type="number" id="startWavenum" value="4000" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:#fff;">
+                <p style="font-size:0.75em; color:var(--ft-color-text-soft); margin:3px 0 0 0;">Usually high wavenumber (left side)</p>
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Right Wavenumber (cm⁻¹)</label>
+                <input type="number" id="endWavenum" value="400" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:#fff;">
+                <p style="font-size:0.75em; color:var(--ft-color-text-soft); margin:3px 0 0 0;">Usually low wavenumber (right side)</p>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Axis Start Pixel X</label>
+                <input type="number" id="axisLeftPixelX" readonly style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:var(--ft-color-text-soft);">
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Axis End Pixel X</label>
+                <input type="number" id="axisRightPixelX" readonly style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:var(--ft-color-text-soft);">
+                <p style="font-size:.75em;color:var(--ft-color-text-soft);margin:4px 0 0 0;">Leave untouched for automatic curve-span mapping. Drag green/orange guides only for manual axis calibration.</p>
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Data Type</label>
+                <select id="dataType" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:#fff;">
+                    <option value="absorbance">Absorbance (0-1)</option>
+                    <option value="transmittance">Transmittance (0-100%)</option>
+                </select>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85em; color:var(--ft-color-text-soft);">
+                    <input type="checkbox" id="useSplitWavenum" style="width:16px; height:16px; accent-color:#0ea5e9; cursor:pointer;">
+                    <span>Use 2000 cm⁻¹ split for non-linear axis</span>
+                </label>
+            </div>
+            <div id="splitParamsGroup">
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Wavenumber split</label>
+                    <input type="number" id="splitWavenum" value="2000" readonly style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:var(--ft-color-text-soft);">
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Pixel X split</label>
+                    <input type="number" id="splitPixelX" readonly style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:var(--ft-color-text-soft);">
+                    <p style="font-size:.75em;color:var(--ft-color-text-soft);margin:4px 0 0 0;">Drag the yellow guide line in the crop panel.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Step 3: Background -->
+<div id="step-background" class="ft-tools-section" style="display:none;">
+    <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+        <div style="width:40px; height:40px; background:#888; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;" id="step3-number">3</div>
+        <h2 style="margin:0; color:var(--ft-color-text-soft);" id="step3-title">Background Removal</h2>
+    </div>
+    <div style="margin:0 0 15px 0; padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.04); color:var(--ft-color-text-soft); font-size:.9em; line-height:1.65;">
+        <b>Step 3 Tips</b><br>
+        Drag boxes on background areas (exclude the curve, include grid lines if present).<br>
+        Set threshold: lower is strict, higher removes more similar shades.<br>
+        Choose output mode, then click Apply and Continue.
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 320px; gap:20px;">
+        <div style="background:rgba(0,0,0,0.3); border-radius:10px; padding:15px; min-height:420px; display:flex; justify-content:center; align-items:center;">
+            <canvas id="bgCanvas" style="max-width:100%; max-height:520px; cursor:crosshair;"></canvas>
+        </div>
+        <div style="background:var(--ft-color-bg); border-radius:10px; padding:20px; border:1px solid var(--ft-color-line);">
+            <h3 style="color:var(--ft-color-text); margin:0 0 10px 0;">Background Controls</h3>
+            <p style="color:var(--ft-color-text-soft); font-size:.9em; margin:0 0 12px 0;">You can draw multiple background boxes.</p>
+            <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Background Threshold</label>
+            <input type="range" id="bgThreshold" min="10" max="120" value="35" style="width:100%;">
+            <span id="bgThresholdValue" style="color:var(--ft-color-text-soft);">35</span>
+            <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin:12px 0 5px 0;">Processing Base</label>
+            <select id="bgProcessingMode" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--ft-color-line); background:var(--ft-color-bg); color:#fff;">
+                <option value="color">Original Color</option>
+                <option value="grayscale">Grayscale</option>
+            </select>
+            <div id="bgBoxesInfo" style="margin-top:12px; color:var(--ft-color-text-soft); font-size:0.9em;">Boxes: 0</div>
+            <button type="button" data-ft-action="clearBackgroundBoxes" style="width:100%; margin-top:12px; padding:10px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer;">Reset</button>
+            <button type="button" data-ft-action="applyBackgroundAndContinue" class="ft-button" style="width:100%; margin-top:10px;">Apply &amp; Continue</button>
+        </div>
+    </div>
+</div>
+
+<!-- Step 4: Extract -->
+<div id="step-extract" class="ft-tools-section" style="display:none;">
+    <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+        <div style="width:40px; height:40px; background:#888; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;" id="step4-number">4</div>
+        <h2 style="margin:0; color:var(--ft-color-text-soft);" id="step4-title">Extract Curve</h2>
+    </div>
+    <div style="margin:0 0 15px 0; padding:10px 12px; border-radius:8px; background:rgba(255,255,255,.04); color:var(--ft-color-text-soft); font-size:.9em; line-height:1.65;">
+        <b>Step 4 Tips</b><br>
+        Auto: The system will first attempt automatic detection. Observe the green curve; use other methods if unsuitable.<br>
+        Color Pick: Applicable when the spectral curve shows distinct colors. Drag boxes on the curve to sample colors.<br>
+        Manual Trace: Click to mark points along the curve; more points yield higher accuracy.
+    </div>
+
+    <div id="auto-try-section" style="margin-bottom:20px; padding:15px; background:rgba(0,255,136,0.05); border-radius:10px; border:1px solid rgba(0,255,136,0.2);">
+        <h3 style="color:#2b7f93; margin:0 0 10px 0;">Auto Detection Result</h3>
+        <p style="color:var(--ft-color-text-soft); font-size:0.9em; margin:0 0 15px 0;">System automatically tried to detect curves using grayscale analysis.</p>
+        <div id="auto-try-status" style="color:var(--ft-color-text-soft); font-weight:bold;">Detecting...</div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 350px; gap:20px;">
+        <div>
+            <div id="extractCanvasStage" class="ft-advanced-extract-stage">
+                <div id="extractCanvasViewport" class="ft-advanced-extract-viewport">
+                    <canvas id="extractCanvas" style="cursor:crosshair;"></canvas>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:15px; align-items:flex-end;">
+                <div style="flex:1; display:flex; flex-direction:column;">
+                    <div class="ft-auto-hint">
+                        <span class="ft-auto-hint__arrow">▾</span>
+                        <span class="ft-auto-hint__text">Click multiple times and pick the best result</span>
+                    </div>
+                    <button type="button" data-ft-action="retryAutoExtract" style="padding:12px; background:transparent; color:var(--ft-color-text-soft); border:1px solid var(--ft-color-line); border-radius:4px; cursor:pointer; width:100%;">Retry Auto</button>
+                </div>
+                <button type="button" data-ft-action="set-extract-mode" data-ft-mode="color" id="btn-color" style="flex:1; padding:12px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer;">Color Pick</button>
+                <button type="button" data-ft-action="set-extract-mode" data-ft-mode="trace" id="btn-trace" style="flex:1; padding:12px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer;">Manual Trace</button>
+            </div>
+        </div>
+        <div>
+            <div id="manual-panel" style="display:none; background:var(--ft-color-bg); border:1px solid var(--ft-color-line); border-radius:8px; padding:20px;">
+                <div id="color-control" style="display:none;">
+                    <h3 style="color:var(--ft-color-text); margin-bottom:15px;">Color Extraction</h3>
+                    <p style="color:var(--ft-color-text-soft); font-size:0.9em; margin-bottom:15px;">Drag a box across the curve to sample colors.</p>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:0.85em; color:var(--ft-color-text-soft); margin-bottom:5px;">Tolerance</label>
+                        <input type="range" id="colorTolerance" min="5" max="100" value="30" style="width:100%;">
+                        <span id="toleranceValue" style="color:var(--ft-color-text-soft);">30</span>
+                        <small style="display:block;color:var(--ft-color-text-soft);margin-top:3px;">Recommended: 25-40.</small>
+                    </div>
+                    <div id="color-preview-box" style="width:40px; height:40px; border:2px solid #fff; margin-bottom:15px; background:transparent;"></div>
+                    <div id="color-points-list" style="background:var(--ft-color-bg); border-radius:6px; padding:10px; margin-bottom:15px; max-height:100px; overflow-y:auto; font-family:monospace; font-size:0.8em;">
+                        <span style="color:var(--ft-color-text-soft);">No color points selected</span>
+                    </div>
+                    <button type="button" data-ft-action="clearColorPoints" style="width:100%; padding:10px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer; margin-bottom:10px;">Reset</button>
+                    <button type="button" data-ft-action="extractByColor" class="ft-button" style="width:100%;">Extract curve</button>
+                </div>
+                <div id="trace-control" style="display:none;">
+                    <h3 style="color:var(--ft-color-text); margin-bottom:15px;">Manual Trace</h3>
+                    <p style="color:var(--ft-color-text-soft); font-size:0.9em; margin-bottom:15px;">Click points along the curve</p>
+                    <div id="point-list" style="background:var(--ft-color-bg); border-radius:6px; padding:10px; margin-bottom:15px; max-height:100px; overflow-y:auto; font-family:monospace; font-size:0.8em;">
+                        <span style="color:var(--ft-color-text-soft);">No points</span>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button type="button" data-ft-action="clearPoints" style="flex:1; padding:10px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer;">Reset</button>
+                        <button type="button" data-ft-action="smartTrace" class="ft-button" style="flex:2;">Fitted curve</button>
+                    </div>
+                </div>
+            </div>
+            <div id="result-panel" style="display:none; margin-top:15px; background:var(--ft-color-bg); border:1px solid var(--ft-color-line); border-radius:8px; padding:20px;">
+                <h3 style="color:#2b7f93; margin-bottom:15px;">Result</h3>
+                <div style="margin-bottom:10px; padding:10px; border-radius:6px; background:rgba(255,255,255,.03);">
+                    <button id="btn-eraser" type="button" data-ft-action="toggleEraserMode" style="width:100%; padding:10px; background:transparent; color:var(--ft-color-text-soft); border:1px solid var(--ft-color-line); border-radius:4px; cursor:pointer;">
+                        <span id="eraser-text">Eraser: OFF</span>
+                    </button>
+                    <button id="btn-reset-erase" type="button" data-ft-action="resetAllErases" style="width:100%; margin-top:8px; padding:8px; background:transparent; color:var(--ft-color-text-soft); border:1px solid var(--ft-color-cyan); border-radius:4px; cursor:pointer;">Reset All Erases</button>
+                    <div style="margin-top:8px;">
+                        <label style="font-size:.85em;color:var(--ft-color-text-soft);">Eraser Size</label>
+                        <input type="range" id="eraserSize" min="4" max="40" value="12" style="width:100%;">
+                    </div>
+                </div>
+                <div style="margin-bottom:10px; padding:10px; border-radius:6px; background:rgba(255,255,255,.03); border:1px solid rgba(0,212,255,0.2);">
+                    <label style="font-size:.85em;color:var(--ft-color-text-soft);display:block;margin-bottom:6px;">Wavenumber Offset (cm⁻¹)</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="number" id="wavenumOffset" value="0" step="1" min="-1000" max="1000" style="flex:1;padding:8px;border-radius:4px;border:1px solid var(--ft-color-line);background:var(--ft-color-bg);color:#fff;text-align:center;font-family:monospace;font-size:1.1em;">
+                        <button type="button" data-ft-action="applyWavenumOffset" class="ft-button" style="padding:8px 16px;">Apply</button>
+                    </div>
+                    <small style="color:var(--ft-color-text-soft);display:block;margin-top:4px;">Positive = shift to higher wavenumbers</small>
+                    <div id="offsetStatus" style="color:#2b7f93;font-size:0.85em;margin-top:6px;display:none;"></div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); border-radius:6px; padding:10px; height:150px;">
+                    <canvas id="previewCanvas" width="310" height="130"></canvas>
+                </div>
+                <button type="button" data-ft-action="showPreviewModal" class="ft-button" style="width:100%; margin-top:15px;">Preview &amp; Download CSV</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div id="curvePreviewModal" class="ft-advanced-modal">
+    <div class="ft-advanced-modal__panel">
+        <div class="ft-advanced-modal__head">
+            <h2 style="color:#2b7f93; margin:0;">Curve Preview</h2>
+            <button type="button" data-ft-action="closePreviewModal" style="background:transparent; border:none; color:var(--ft-color-text-soft); font-size:24px; cursor:pointer;">&times;</button>
+        </div>
+        <div style="text-align:center; margin-bottom:10px;">
+            <canvas id="modalCanvas" width="700" height="400" style="width:100%; height:auto; background:#000; border:1px solid var(--ft-color-line);"></canvas>
+        </div>
+        <div id="modal-coords" style="color:#2b7f93; font-family:monospace; margin-bottom:15px; text-align:center;">
+            Hover over the curve to see values
+        </div>
+        <div style="display:flex; gap:10px; justify-content:center;">
+            <button type="button" data-ft-action="downloadCSV" class="ft-button" style="padding:12px 30px;">Download CSV</button>
+            <button type="button" data-ft-action="closePreviewModal" style="padding:12px 30px; background:transparent; color:#fff; border:1px solid var(--ft-color-line-strong); border-radius:4px; cursor:pointer;">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Loading -->
+<div id="loading" class="ft-advanced-loading">
+    <div class="ft-advanced-loading__spinner"></div>
+    <p style="margin-top:20px; color:var(--ft-color-text-soft);" id="loadingText">Processing...</p>
+</div>
+
+<footer class="ft-footer">
+    Powered by <a href="https://ftir.fun" target="_blank">FTIR.fun</a> — Cloud FTIR Spectroscopy Analysis Platform with 130,000+ reference spectra.
+    <br>Upload your extracted CSV to <a href="https://ftir.fun/spectrum/upload-image/" target="_blank">ftir.fun</a> for instant material identification.
+</footer>
+
+</div>
+
+<script id="ft-advanced-upload-config" type="application/json">
+{
+  "isAuthenticated": true,
+  "messages": {
+    "invalidInteger": "Please enter a valid integer.",
+    "labelOriginal": "Original",
+    "labelShifted": "Shifted",
+    "loadingApplyingBackgroundRemoval": "Applying background removal...",
+    "saveProcessedImageFailed": "Unable to save the processed image right now.",
+    "uploading": "Uploading...",
+    "uploadFailed": "Unable to upload the image right now.",
+    "saving": "Saving...",
+    "saveCropFailed": "Unable to save the crop right now.",
+    "backgroundBoxesLabel": "Boxes: {count}",
+    "eraserOn": "Eraser: ON",
+    "eraserOff": "Eraser: OFF",
+    "step2CompleteTitle": "Crop & Set Parameters ✓",
+    "step3CompleteTitle": "Background Preprocessing ✓",
+    "detecting": "Detecting...",
+    "autoDetectionSuccessWithCount": "Auto-detection successful! ({count} extracted data points)",
+    "autoDetectionFailed": "Auto detection failed. Please try Color Pick or Manual Trace below.",
+    "autoDetectionError": "Auto detection is temporarily unavailable. Please try Color Pick or Manual Trace below.",
+    "noColorPointsSelected": "No color points selected",
+    "noColorBoxesSelected": "No color box selected",
+    "noPoints": "No points",
+    "selectColorPointFirst": "Please click on the curve to select at least one color point.",
+    "selectColorBoxFirst": "Please drag a box across the curve to select at least one color region.",
+    "extracting": "Extracting...",
+    "extractionFailed": "Unable to extract the curve right now.",
+    "markGuidePointsFirst": "Please mark at least 2 guide points.",
+    "tracing": "Tracing...",
+    "tracingFailed": "Unable to trace the curve right now.",
+    "noPreviewData": "No data is available to preview yet.",
+    "hoverCurveValues": "Hover over the curve to see values",
+    "wavenumberLabel": "Wavenumber",
+    "valueLabel": "Value",
+    "offsetAppliedPositive": "Offset applied: +{offset} cm⁻¹",
+    "offsetAppliedNegative": "Offset applied: {offset} cm⁻¹",
+    "offsetAppliedZero": "No offset",
+    "peakCorrectionBandHigh": "High wavenumber",
+    "peakCorrectionBandMiddle": "Middle wavenumber",
+    "peakCorrectionBandLow": "Low wavenumber",
+    "peakCorrectionAppliedSummary": "Peak correction applied.",
+    "peakCorrectionResetSummary": "Peak correction reset.",
+    "peakCorrectionNeedData": "Please extract the spectrum first.",
+    "peakCorrectionNeedAllBands": "Please fill in the correct peak for all three regions.",
+    "peakCorrectionNeedNumeric": "All corrected peaks must be valid numbers.",
+    "peakCorrectionOrderInvalid": "Corrected peaks must stay in the same spectral order.",
+    "peakCorrectionDetectFailed": "Not enough stable points for the correction table.",
+    "peakCorrectionDefaultOption": "Default",
+    "peakCorrectionDetectedHelp": "Auto-marked peaks",
+    "peakCorrectionDetectedValue": "Auto-marked peaks: {peak}",
+    "pleaseLoginDownloadCsv": "Ready to download.",
+    "noDataToExport": "No data is available to export yet.",
+    "downloadFilename": "ftir-spectrum.csv",
+    "defaultDownloadFilename": "ftir-spectrum.csv",
+    "genericRequestFailed": "The request could not be completed right now. Please try again later."
+  }
+}
+</script>
+
+<script src="/static/js/app.js" defer></script>
+</body>
+</html>

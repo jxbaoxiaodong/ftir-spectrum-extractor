@@ -2,9 +2,14 @@
 
 # FTIR Spectrum Image Extractor
 
-Extract infrared spectrum curves from images and convert pixel coordinates to wavenumber-intensity CSV data. Designed for digitizing FTIR spectra from published papers, screenshots, or scanned figures.
+**Extract infrared spectrum curves from images and convert to wavenumber–intensity CSV data.**
 
-## What it does
+Built specifically for **FTIR (Fourier Transform Infrared Spectroscopy)** spectrum digitization — extract wavenumber (cm⁻¹) vs. absorbance/transmittance data from published papers, screenshots, or scanned figures. The tool provides a complete interactive web interface: upload an image, crop the spectral region, set IR axis parameters, and export clean CSV ready for library search or further analysis.
+
+> **For other spectroscopy / chromatography techniques:**
+> This project is purpose-built for infrared spectra (IR / FT-IR / Mid-IR / NIR / Far-IR / ATR-FTIR). If you work with **Raman spectroscopy**, **UV-Vis (Ultraviolet-Visible)**, **GC (Gas Chromatography)**, **HPLC**, **GC-MS**, **LC-MS**, **XRD (X-Ray Diffraction)**, **NMR**, **fluorescence spectroscopy**, **TGA**, **DSC**, or other analytical curves, you can fork this project and modify the axis mapping (X: wavelength, retention time, 2θ, chemical shift, temperature, m/z; Y: intensity, response, weight%) to suit your instrument. The core image extraction algorithms (auto threshold, Bayesian color classification, cubic interpolation) are technique-agnostic.
+
+## Features
 
 | Method | How it works |
 |--------|-------------|
@@ -18,8 +23,8 @@ After extraction, pixel points are converted to spectral data using piecewise-li
 
 ```bash
 pip install -r requirements.txt
-python cv_service.py
-# Server starts on http://localhost:5001
+python app.py
+# Open http://localhost:5001 in your browser
 ```
 
 Docker:
@@ -29,124 +34,82 @@ docker build -t ftir-extractor .
 docker run --rm -p 5001:5001 ftir-extractor
 ```
 
+## How It Works (Interactive Web UI)
+
+1. **Upload** — Upload a spectrum image (JPG/PNG, auto-scaled to 900px width)
+2. **Crop & Parameters** — Drag the crop box to frame the spectral region; set start/end wavenumber, data type, and optional 2000 cm⁻¹ axis split
+3. **Background Removal** — Select background regions to suppress grid lines and noise
+4. **Extract** — Choose auto / color / manual trace; preview the extracted curve; adjust with eraser and wavenumber offset; download CSV
+
 ## API Endpoints
 
-### `POST /analyze` — Auto Extract
+### `POST /spectrum/upload-image/` — Upload image
+
+Multipart form with `image` field. Returns base64 data-URI of processed image.
+
+### `POST /spectrum/crop/` — Save crop & parameters
 
 ```json
 {
-  "image": "data:image/jpeg;base64,...",
-  "crop_coords": {"x": 0, "y": 0, "width": 900, "height": 400},
-  "threshold": 200,
-  "invert_threshold": true,
-  "extraction_direction": "average",
-  "use_grayscale": false,
-  "background_roi": {"x": 10, "y": 10, "width": 50, "height": 50}
+  "image_data": "data:image/jpeg;base64,...",
+  "crop_coords": {"x": 50, "y": 30, "width": 800, "height": 350},
+  "start_wavenum": 4000,
+  "end_wavenum": 400,
+  "data_type": "absorbance",
+  "split_wavenum": 2000,
+  "split_pixel_x": 450
 }
 ```
 
-**Parameters**
+### `POST /spectrum/auto-extract/` — Auto extraction
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `image` | string | — | Base64 data-URI of the spectrum image. |
-| `crop_coords` | object | full image | Crop region `{x, y, width, height}`. |
-| `threshold` | int | 200 | Binarization threshold (150/200/250). |
-| `invert_threshold` | bool | true | `true` = white background / dark curve; `false` = dark background / light curve. |
-| `extraction_direction` | string | "average" | `"average"`, `"top_first"`, or `"bottom_first"`. |
-| `use_grayscale` | bool | false | Force grayscale processing. |
-| `background_roi` | object | null | Background sample region for suppression. |
+Automatically cycles through 12 modes (4 algorithms × 3 thresholds). Each call uses the next mode.
 
-**Response**
+### `POST /spectrum/extract-color/` — Color extraction
 
 ```json
 {
-  "success": true,
-  "auto_curves": [{"points": [{"x": 10, "y": 150}, ...]}],
-  "count": 850
-}
-```
-
-### `POST /extract-color` — Color Extract
-
-```json
-{
-  "image": "data:image/jpeg;base64,...",
-  "crop_coords": {"x": 0, "y": 0, "width": 900, "height": 400},
   "seed_boxes": [{"x": 100, "y": 200, "width": 60, "height": 30}],
   "tolerance": 30,
   "background_rois": [{"x": 10, "y": 10, "width": 80, "height": 80}]
 }
 ```
 
-**Parameters**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `seed_boxes` | array | — | Rectangles on the curve for color sampling. |
-| `seed_points` | array | — | Legacy: individual points on the curve. |
-| `tolerance` | int | 30 | Color tolerance (5–100). Higher = more permissive. |
-| `background_rois` | array | [] | Background regions to subtract. |
-
-### `POST /trace` — Manual Trace
+### `POST /spectrum/trace/` — Manual trace
 
 ```json
 {
-  "image": "data:image/jpeg;base64,...",
-  "crop_coords": {"x": 0, "y": 0, "width": 900, "height": 400},
   "guide_points": [{"x": 50, "y": 300}, {"x": 200, "y": 150}, {"x": 400, "y": 280}],
   "strategy": "vertical"
 }
 ```
 
-**Parameters**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `guide_points` | array | — | At least 2 points along the curve. More points = higher accuracy. |
-| `strategy` | string | "vertical" | Interpolation strategy. |
-
-### `GET /health`
-
+All extraction endpoints return:
 ```json
-{"status": "ok", "service": "ftir-spectrum-extractor"}
+{
+  "success": true,
+  "points": [{"x": 10, "y": 150}, ...],
+  "spectral_data": [{"wavenumber": 3998.5, "value": 0.82}, ...],
+  "count": 850
+}
 ```
 
 ## Pixel → Wavenumber Conversion
 
-After extracting pixel points, use `spectral_convert.py` to map them to wavenumber-intensity pairs:
-
 ```python
 from spectral_convert import convert_pixels_to_spectral
-
-points = [{"x": 50, "y": 300}, {"x": 100, "y": 250}, ...]
-
-spectrum_params = {
-    "start_wavenum": 4000,
-    "end_wavenum": 400,
-    "data_type": "absorbance",       # or "transmittance"
-    "split_pixel_x": None,           # set for non-linear axes
-    "split_wavenum": 2000,
-    "use_manual_axis_calibration": False,
-    "axis_left_pixel_x": None,
-    "axis_right_pixel_x": None,
-}
-
-crop_coords = {"x": 0, "y": 0, "width": 900, "height": 400}
 
 spectral_data = convert_pixels_to_spectral(points, crop_coords, spectrum_params)
 # → [{"wavenumber": 3998.5, "value": 0.8234}, ...]
 ```
 
-The conversion handles:
+Supports:
 - Linear and piecewise-linear (split at 2000 cm⁻¹) wavenumber mapping
 - Automatic or manual axis calibration
 - Y-axis normalization to absorbance (0–1) or transmittance (0–100%)
 - Point deduplication by wavenumber averaging
 
 ## 12-Mode Auto Extraction
-
-The auto extractor rotates through 12 modes (4 algorithms × 3 thresholds):
 
 | Modes | Threshold | Binarization | Direction |
 |-------|-----------|--------------|-----------|
@@ -160,12 +123,39 @@ Click "Retry Auto" multiple times — each click uses the next mode. Pick the re
 
 ```
 ftir-spectrum-extractor/
-├── cv_service.py          # Flask CV server (auto/color/trace extraction)
+├── app.py                 # Flask full-stack application (UI + API)
+├── cv_engine.py           # Computer vision extraction algorithms
 ├── spectral_convert.py    # Pixel → wavenumber conversion
+├── templates/
+│   └── index.html         # Interactive extraction UI
+├── static/
+│   ├── js/app.js          # Frontend logic
+│   └── css/style.css      # Styling
 ├── requirements.txt
 ├── Dockerfile
 └── LICENSE
 ```
+
+## Scope & Related Techniques
+
+This tool **directly supports** infrared spectroscopy curve extraction:
+
+- FTIR, FT-IR, ATR-FTIR, DRIFTS, transmission IR, reflection IR
+- Mid-IR (4000–400 cm⁻¹), Near-Infrared (NIR), Far-IR
+- Absorbance, transmittance, Kubelka-Munk
+- Wavenumber (cm⁻¹) axis with optional non-linear split at 2000 cm⁻¹
+
+**Can be adapted** (fork & modify axis parameters) for:
+
+- Raman spectroscopy (Raman shift cm⁻¹, SERS, resonance Raman)
+- UV-Vis spectroscopy (wavelength nm, optical density)
+- Chromatography (GC, HPLC, UHPLC, GC-MS, LC-MS, retention time)
+- Thermal analysis (TGA, DSC, DTA, temperature °C, weight loss)
+- XRD (2θ), XRF, SAXS
+- NMR (¹H, ¹³C, chemical shift ppm)
+- Mass spectrometry (m/z)
+- Fluorescence, photoluminescence, emission spectroscopy
+- Electrochemistry (cyclic voltammetry, impedance)
 
 ## About FTIR.fun
 

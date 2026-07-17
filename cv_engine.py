@@ -1,13 +1,11 @@
 """
-FTIR Spectrum Image Extractor — CV Service
+FTIR Spectrum Image Extractor — CV Engine
 
-Extracts infrared spectrum curves from images using computer vision.
+Pure computer vision functions for extracting infrared spectrum curves from images.
 Three extraction methods:
   - Auto: adaptive threshold + contour analysis (12 mode rotation)
   - Color: Bayesian color classification from user-selected seed regions
   - Trace: cubic interpolation through manually marked guide points
-
-Runs as a standalone Flask server on port 5001.
 """
 
 import base64
@@ -15,11 +13,8 @@ import logging
 
 import cv2
 import numpy as np
-from flask import Flask, jsonify, request
 from scipy import interpolate
 
-app = Flask(__name__)
-app.config["JSON_AS_ASCII"] = False
 logger = logging.getLogger(__name__)
 
 
@@ -489,123 +484,3 @@ def trace_curve_by_guide(img, guide_points, strategy="vertical", crop_coords=Non
     return final_points
 
 
-# ---------------------------------------------------------------------------
-# Flask routes
-# ---------------------------------------------------------------------------
-
-@app.route("/analyze", methods=["POST"])
-def analyze():
-    """Auto-extract a curve from a spectrum image."""
-    try:
-        data = request.get_json()
-        image_data = data.get("image")
-        crop_coords = data.get("crop_coords", {})
-        threshold = int(data.get("threshold", 200))
-        use_grayscale = bool(data.get("use_grayscale", False))
-        background_roi = data.get("background_roi")
-        invert_threshold = bool(data.get("invert_threshold", True))
-        extraction_direction = data.get("extraction_direction", "average")
-
-        if not image_data:
-            return jsonify({"error": "No image data provided"})
-
-        if use_grayscale:
-            img = decode_base64_image(image_data)
-        else:
-            img_color = decode_base64_image_color(image_data)
-            img = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
-
-        points = auto_extract_curve(
-            img, crop_coords, threshold, background_roi,
-            invert_threshold=invert_threshold,
-            extraction_direction=extraction_direction,
-        )
-
-        if not points:
-            return jsonify({"success": False, "error": "No curve detected"})
-
-        return jsonify({"success": True, "auto_curves": [{"points": points}], "count": len(points)})
-
-    except Exception:
-        logger.exception("auto-analyze failed")
-        return jsonify({"error": "Auto-analyze failed. Please try again or use a different image."})
-
-
-@app.route("/extract-color", methods=["POST"])
-def extract_color():
-    """Extract a curve by color similarity from seed regions."""
-    try:
-        data = request.get_json()
-        image_data = data.get("image")
-        seed_points = data.get("seed_points", [])
-        seed_boxes = data.get("seed_boxes") or []
-        tolerance = int(data.get("tolerance", 30))
-        crop_coords = data.get("crop_coords", {})
-        use_grayscale = bool(data.get("use_grayscale", False))
-        background_roi = data.get("background_roi")
-        background_rois = data.get("background_rois") or []
-
-        if not image_data:
-            return jsonify({"error": "No image data provided"})
-        if not seed_points and not seed_boxes:
-            return jsonify({"error": "No seed points or seed boxes provided"})
-
-        img = decode_base64_image_color(image_data)
-        if use_grayscale:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-
-        points = extract_color_curve(
-            img, seed_points, tolerance, crop_coords,
-            background_roi, background_rois, seed_boxes,
-        )
-        if not points:
-            return jsonify({"success": False, "error": "No curve extracted"})
-        return jsonify({"success": True, "points": points, "count": len(points)})
-
-    except Exception:
-        logger.exception("extract-color failed")
-        return jsonify({"error": "Color extraction failed. Please try again or use a different image."})
-
-
-@app.route("/trace", methods=["POST"])
-def trace():
-    """Trace a curve through manually marked guide points."""
-    try:
-        data = request.get_json()
-        image_data = data.get("image")
-        guide_points = data.get("guide_points", [])
-        strategy = data.get("strategy", "vertical")
-        crop_coords = data.get("crop_coords", {})
-        use_grayscale = bool(data.get("use_grayscale", False))
-
-        if not image_data:
-            return jsonify({"error": "No image data provided"})
-        if len(guide_points) < 2:
-            return jsonify({"error": "At least 2 guide points required"})
-
-        if use_grayscale:
-            img = decode_base64_image(image_data)
-        else:
-            img_color = decode_base64_image_color(image_data)
-            img = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
-
-        points = trace_curve_by_guide(img, guide_points, strategy, crop_coords)
-        if not points:
-            return jsonify({"success": False, "error": "Trace failed"})
-        return jsonify({"success": True, "points": points, "count": len(points)})
-
-    except Exception:
-        logger.exception("trace failed")
-        return jsonify({"error": "Trace extraction failed. Please try again or use a different image."})
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "service": "ftir-spectrum-extractor"})
-
-
-if __name__ == "__main__":
-    from flask_cors import CORS
-    CORS(app)
-    app.run(host="0.0.0.0", port=5001)

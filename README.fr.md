@@ -2,7 +2,12 @@
 
 # FTIR Spectrum Image Extractor
 
-Extrait des courbes de spectres infrarouges à partir d'images et convertit les coordonnées en pixels en données CSV nombre d'onde / intensité. Conçu pour numériser des spectres FTIR depuis des articles publiés, captures d'écran ou figures scannées.
+**Extrait des courbes de spectres infrarouges à partir d'images et les convertit en données CSV nombre d'onde / intensité.**
+
+Conçu spécifiquement pour la numérisation de spectres **FTIR (Spectroscopie Infrarouge à Transformée de Fourier, Fourier Transform Infrared Spectroscopy)** — extrait les données nombre d'onde (cm⁻¹) vs. absorbance/transmittance depuis des articles publiés, captures d'écran ou figures scannées. Fournit une interface web interactive complète : téléversez une image, recadrez la région spectrale, définissez les paramètres d'axes IR et exportez un CSV propre.
+
+> **Pour d'autres techniques de spectroscopie / chromatographie :**
+> Ce projet est conçu spécifiquement pour les spectres infrarouges (IR / FT-IR / Mid-IR / NIR / Far-IR / ATR-FTIR). Si vous travaillez avec la **spectroscopie Raman**, **UV-Vis**, **GC**, **HPLC**, **GC-MS**, **LC-MS**, **XRD**, **RMN**, **spectroscopie de fluorescence**, **ATG**, **DSC** ou d'autres courbes analytiques, vous pouvez forker ce projet et modifier le mappage d'axes (X : longueur d'onde, temps de rétention, 2θ, déplacement chimique, température, m/z ; Y : intensité, réponse, perte de masse%) selon votre instrument. Les algorithmes d'extraction d'image (seuil adaptatif, classification bayésienne de couleur, interpolation cubique) sont indépendants de la technique.
 
 ## Fonctionnalités
 
@@ -16,8 +21,8 @@ Extrait des courbes de spectres infrarouges à partir d'images et convertit les 
 
 ```bash
 pip install -r requirements.txt
-python cv_service.py
-# Serveur sur http://localhost:5001
+python app.py
+# Ouvrez http://localhost:5001 dans votre navigateur
 ```
 
 Docker :
@@ -27,50 +32,33 @@ docker build -t ftir-extractor .
 docker run --rm -p 5001:5001 ftir-extractor
 ```
 
-## Points de terminaison API
+## Flux de travail (Interface Web Interactive)
 
-### `POST /analyze` — Extraction auto
+1. **Téléverser** — Téléversez une image du spectre (JPG/PNG, redimensionnée à 900px)
+2. **Recadrer et Paramètres** — Ajustez le cadre à la région spectrale ; définissez les nombres d'onde, le type de données et la division optionnelle à 2000 cm⁻¹
+3. **Suppression du fond** — Sélectionnez des régions de fond pour supprimer les lignes de grille et le bruit
+4. **Extraire** — Choisissez auto / couleur / tracé manuel ; prévisualisez la courbe ; ajustez avec la gomme et le décalage ; téléchargez le CSV
 
-| Paramètre | Type | Défaut | Description |
-|-----------|------|--------|-------------|
-| `image` | string | — | Data-URI base64 de l'image du spectre. |
-| `crop_coords` | object | image entière | Région de recadrage `{x, y, width, height}`. |
-| `threshold` | int | 200 | Seuil de binarisation (150/200/250). |
-| `invert_threshold` | bool | true | `true` = fond blanc / courbe sombre. |
-| `extraction_direction` | string | "average" | `"average"`, `"top_first"` ou `"bottom_first"`. |
-| `background_roi` | object | null | Région d'échantillonnage du fond. |
+## Portée et techniques associées
 
-### `POST /extract-color` — Extraction couleur
+Cet outil **supporte directement** l'extraction de courbes de spectroscopie infrarouge :
 
-| Paramètre | Type | Défaut | Description |
-|-----------|------|--------|-------------|
-| `seed_boxes` | array | — | Rectangles sur la courbe pour l'échantillonnage couleur. |
-| `tolerance` | int | 30 | Tolérance couleur (5–100). |
-| `background_rois` | array | [] | Régions de fond à soustraire. |
+- FTIR, FT-IR, ATR-FTIR, DRIFTS, IR par transmission, IR par réflexion
+- Mid-IR (4000–400 cm⁻¹), NIR (Proche Infrarouge), Far-IR
+- Absorbance, transmittance, Kubelka-Munk
+- Axe en nombre d'onde (cm⁻¹) avec division non linéaire optionnelle à 2000 cm⁻¹
 
-### `POST /trace` — Tracé manuel
+**Peut être adapté** (fork et modification des paramètres d'axes) pour :
 
-| Paramètre | Type | Défaut | Description |
-|-----------|------|--------|-------------|
-| `guide_points` | array | — | Au moins 2 points sur la courbe. |
-| `strategy` | string | "vertical" | Stratégie d'interpolation. |
-
-### `GET /health`
-
-```json
-{"status": "ok", "service": "ftir-spectrum-extractor"}
-```
-
-## Conversion Pixel → Nombre d'onde
-
-```python
-from spectral_convert import convert_pixels_to_spectral
-
-spectral_data = convert_pixels_to_spectral(points, crop_coords, spectrum_params)
-# → [{"wavenumber": 3998.5, "value": 0.8234}, ...]
-```
-
-Supporte le mappage linéaire et linéaire par segments (division à 2000 cm⁻¹), calibration manuelle des axes et normalisation Y pour l'absorbance (0–1) ou la transmittance (0–100%).
+- Spectroscopie Raman (déplacement Raman cm⁻¹, SERS, Raman résonant)
+- Spectroscopie UV-Vis (longueur d'onde nm, densité optique)
+- Chromatographie (GC, HPLC, UHPLC, GC-MS, LC-MS, temps de rétention)
+- Analyse thermique (ATG, DSC, ATD, température °C, perte de masse)
+- XRD (2θ), XRF, SAXS
+- RMN (¹H, ¹³C, déplacement chimique ppm)
+- Spectrométrie de masse (m/z)
+- Fluorescence, photoluminescence, spectroscopie d'émission
+- Électrochimie (voltamétrie cyclique, spectroscopie d'impédance)
 
 ## À propos de FTIR.fun
 

@@ -4,7 +4,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY cv_service.py spectral_convert.py ./
+COPY app.py cv_engine.py spectral_convert.py ./
+COPY templates/ ./templates/
+COPY static/ ./static/
 
 EXPOSE 5001
-CMD ["python", "cv_service.py"]
+CMD ["python", "app.py"]
